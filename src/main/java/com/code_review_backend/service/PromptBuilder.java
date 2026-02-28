@@ -1,57 +1,41 @@
 package com.code_review_backend.service;
 
+import com.code_review_backend.PromptFactory.PromptFactory;
+import com.code_review_backend.PromptFactory.PromptStrategy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
 
-@Component
+@Service
 public class PromptBuilder {
 
+    private static final Logger log = LoggerFactory.getLogger(PromptBuilder.class);
+
+    private final PromptFactory promptFactory;
+
+    @Autowired
+    public PromptBuilder(PromptFactory promptFactory) {
+        this.promptFactory = promptFactory;
+    }
+
     public String buildPrompt(String code, String language) {
-        return """
-            You are a senior software engineer.
 
-            Analyze the following code written in: %s
+        if (code == null || code.trim().isEmpty()) {
+            throw new IllegalArgumentException("Code cannot be null or empty");
+        }
 
-            STRICT RULES:
-            - Return ONLY valid JSON.
-            - Do NOT include ANY text before or after the JSON.
-            - Do NOT include code fences like ```json or ``` or backticks.
-            - Do NOT wrap JSON in markdown.
-            - Do NOT add explanations, titles or commentary.
-            - Output must be a SINGLE VALID JSON OBJECT EXACTLY in this format:
+        if (language == null || language.trim().isEmpty()) {
+            throw new IllegalArgumentException("Language cannot be null or empty");
+        }
 
-            {
-              "issues": [],
-              "suggestions": [],
-              "refactorSnippet": ""
-            }
+        String normalizedLang = language.trim().toLowerCase();
 
-            ADDITIONAL LANGUAGE CHECK RULE:
-            - FIRST, verify if the provided code truly matches the declared language ("%s").
-            - If the code does NOT match the declared language:
-                {
-                  "issues": ["The provided code does not appear to be written in %s"],
-                  "suggestions": [],
-                  "refactorSnippet": ""
-                }
-              And STOP. Do NOT analyze anything else.
+        log.info("Building prompt for language: {}", normalizedLang);
 
-            RULES FOR EACH FIELD:
-            - "issues": real syntactic, logical or runtime issues ONLY.
-              If no issues → ["No real issues found"].
-            
-            - "suggestions": only short, practical improvements.
-              If no improvements → [].
+        PromptStrategy strategy = promptFactory.getStrategy(normalizedLang);
 
-            - "refactorSnippet":
-                * MUST contain ONLY the improved code (NO labels, NO JSON, NO markdown).
-                * Provide code ONLY if optimization or readability improves.
-                * If no refactor is needed → return the original code EXACTLY as given.
-                * ABSOLUTELY DO NOT include fields like "originalCode", "refactoredCode", or any other structure.
-
-            Now analyze this code and produce ONLY the required JSON:
-
-            CODE:
-            %s
-            """.formatted(language, language, language, code);
+        return strategy.buildPrompt(code);
     }
 }

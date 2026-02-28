@@ -43,7 +43,7 @@ public class GeminiClient {
                 HttpHeaders headers = new HttpHeaders();
                 headers.setContentType(MediaType.APPLICATION_JSON);
                 headers.setBearerAuth(apiKey);
-
+                System.out.println(body);
                 HttpEntity<String> request = new HttpEntity<>(body, headers);
 
                 ResponseEntity<String> response =

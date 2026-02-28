@@ -4,6 +4,8 @@ import com.code_review_backend.dto.ReviewResponse;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -12,113 +14,139 @@ import java.util.List;
 @Component
 public class ResponseParser {
 
-    public ReviewResponse parseGeminiResponse(String aiResponse) {
+    private static final Logger log = LoggerFactory.getLogger(ResponseParser.class);
+
+    public ReviewResponse parseLLMResponse(String rawResponse) {
+
+        if (rawResponse == null || rawResponse.isBlank()) {
+            return fallback("Empty AI response received.");
+        }
 
         try {
-            // -------- STEP 1: Extract LLM content safely --------
-            String content = extractGroqContent(aiResponse);
+            String content = extractLLMContent(rawResponse);
+            String sanitized = sanitizeContent(content);
+            String validJson = extractAndRepairJson(sanitized);
 
-            // -------- STEP 2: Clean markdown / fences --------
-            content = sanitizeContent(content);
-
-            // -------- STEP 3: Extract & auto-repair JSON --------
-            String jsonText = extractAndFixJson(content);
-
-            // -------- STEP 4: Parse JSON --------
-            JSONObject parsed = new JSONObject(jsonText);
-
-            List<String> issues = extractList(parsed, "issues");
-            List<String> suggestions = extractList(parsed, "suggestions");
-            String refactorSnippet = parsed.optString("refactorSnippet", "");
-
-            return new ReviewResponse(issues, suggestions, refactorSnippet);
-        }
-        catch (Exception e) {
-
-            // -------- SAFE FALLBACK --------
-            List<String> issues = new ArrayList<>();
-            issues.add("Unable to process response. Please review your code.");
+            JSONObject json = new JSONObject(validJson);
 
             return new ReviewResponse(
-                    issues,
-                    new ArrayList<>(),
-                    ""
+                    extractList(json, "issues"),
+                    extractList(json, "suggestions"),
+                    json.optString("refactorSnippet", "")
             );
-        }
-    }
 
-    // ------------ STEP 1: Extract content ------------
-
-    private String extractGroqContent(String aiResponse) {
-        try {
-            JSONObject root = new JSONObject(aiResponse);
-            return root
-                    .getJSONArray("choices")
-                    .getJSONObject(0)
-                    .getJSONObject("message")
-                    .optString("content", "");
         } catch (Exception e) {
-            throw new RuntimeException("Failed to extract Groq content: " + aiResponse);
+            log.error("Failed to parse AI response", e);
+            return fallback("AI response could not be processed safely.");
         }
     }
 
-    // ------------ STEP 2: Sanitize text ------------
+    // ----------------------------------------
+    // STEP 1: Extract LLM content
+    // ----------------------------------------
+
+    private String extractLLMContent(String rawResponse) {
+
+        try {
+            JSONObject root = new JSONObject(rawResponse);
+
+            return root
+                    .optJSONArray("choices")
+                    .optJSONObject(0)
+                    .optJSONObject("message")
+                    .optString("content", "");
+
+        } catch (Exception e) {
+            throw new RuntimeException("Invalid LLM structure.");
+        }
+    }
+
+    // ----------------------------------------
+    // STEP 2: Sanitize markdown / fences
+    // ----------------------------------------
 
     private String sanitizeContent(String text) {
+        if (text == null) return "";
+
         return text
-                .replace("```json", "")
-                .replace("```", "")
-                .replace("`", "")
+                .replaceAll("```json", "")
+                .replaceAll("```", "")
+                .replaceAll("`", "")
                 .trim();
     }
 
-    // ------------ STEP 3: Extract + auto-fix JSON ------------
+    // ----------------------------------------
+    // STEP 3: Extract & Repair JSON
+    // ----------------------------------------
 
-    private String extractAndFixJson(String text) {
+    private String extractAndRepairJson(String text) {
 
         int start = text.indexOf('{');
-        if (start == -1) {
-            throw new RuntimeException("Missing JSON start: " + text);
+        int end = text.lastIndexOf('}');
+
+        if (start == -1 || end == -1 || end <= start) {
+            throw new RuntimeException("No valid JSON block found.");
         }
 
-        String candidate = text.substring(start).trim();
+        String candidate = text.substring(start, end + 1);
 
-        if (isValidJson(candidate)) return candidate;
+        candidate = removeTrailingCommas(candidate);
 
-        if (isValidJson(candidate + "}")) return candidate + "}";
+        if (!isValidJson(candidate)) {
+            throw new RuntimeException("Malformed JSON after repair attempt.");
+        }
 
-        String noTrailingCommas = candidate
-                .replaceAll(",\\s*}", "}")
-                .replaceAll(",\\s*]", "]");
-        if (isValidJson(noTrailingCommas)) return noTrailingCommas;
-
-        throw new RuntimeException("JSON cannot be fixed: " + text);
+        return candidate;
     }
 
-    private boolean isValidJson(String s) {
+    private String removeTrailingCommas(String input) {
+        return input
+                .replaceAll(",\\s*}", "}")
+                .replaceAll(",\\s*]", "]");
+    }
+
+    private boolean isValidJson(String json) {
         try {
-            new JSONObject(s);
+            new JSONObject(json);
             return true;
         } catch (JSONException e) {
             return false;
         }
     }
 
-    // ------------ STEP 4: Extract list fields ------------
+    // ----------------------------------------
+    // STEP 4: Extract list fields safely
+    // ----------------------------------------
 
     private List<String> extractList(JSONObject json, String key) {
-        List<String> list = new ArrayList<>();
 
-        if (!json.has(key)) return list;
+        List<String> result = new ArrayList<>();
+
+        if (!json.has(key)) return result;
 
         Object value = json.get(key);
 
-        if (value instanceof JSONArray arr) {
-            for (Object o : arr) list.add(String.valueOf(o));
+        if (value instanceof JSONArray array) {
+            for (int i = 0; i < array.length(); i++) {
+                result.add(String.valueOf(array.get(i)));
+            }
         } else {
-            list.add(String.valueOf(value));
+            result.add(String.valueOf(value));
         }
 
-        return list;
+        return result;
+    }
+
+
+    private ReviewResponse fallback(String message) {
+
+        List<String> issues = new ArrayList<>();
+        issues.add(message);
+
+        return new ReviewResponse(
+                issues,
+                new ArrayList<>(),
+                ""
+        );
     }
 }

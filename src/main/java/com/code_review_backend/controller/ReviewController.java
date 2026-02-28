@@ -12,8 +12,12 @@ import org.springframework.web.bind.annotation.*;
 @CrossOrigin(origins = "*")
 public class ReviewController {
 
+
+    private final ReviewService reviewService;
     @Autowired
-    private ReviewService reviewService;
+    public ReviewController(ReviewService reviewService) {
+        this.reviewService = reviewService;
+    }
 
     @PostMapping
     public ReviewResponse reviewCode(@RequestBody ReviewRequest request) {
