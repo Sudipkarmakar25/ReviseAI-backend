@@ -1,94 +1,56 @@
 package com.code_review_backend.service;
 
-import com.code_review_backend.client.GeminiClient;
 import com.code_review_backend.dto.ReviewRequest;
 import com.code_review_backend.dto.ReviewResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 public class ReviewService {
 
-    private static final Logger log = LoggerFactory.getLogger(ReviewService.class);
-
     private final PromptBuilder promptBuilder;
-    private final GeminiClient geminiClient;
-    private final ResponseParser responseParser;
+    private final AIOrchestrator aiOrchestrator;
     private final CacheService cacheService;
     private final ObjectMapper objectMapper;
+    private final AsyncRefinementService refinementService;
 
-    public ReviewService(
-            PromptBuilder promptBuilder,
-            GeminiClient geminiClient,
-            ResponseParser responseParser,
-            CacheService cacheService,
-            ObjectMapper objectMapper
-    ) {
+    public ReviewService(PromptBuilder promptBuilder, AIOrchestrator aiOrchestrator,
+                         CacheService cacheService, ObjectMapper objectMapper,
+                         AsyncRefinementService refinementService) {
         this.promptBuilder = promptBuilder;
-        this.geminiClient = geminiClient;
-        this.responseParser = responseParser;
+        this.aiOrchestrator = aiOrchestrator;
         this.cacheService = cacheService;
         this.objectMapper = objectMapper;
+        this.refinementService = refinementService;
     }
 
     public ReviewResponse processReview(ReviewRequest request) {
-
         validateRequest(request);
-
-        log.info("Processing review for language: {}", request.getLanguage());
-
-
         String cacheKey = cacheService.generateKey(request.getLanguage(), request.getCode());
-        Object cachedData = cacheService.get(cacheKey);
 
+        // 1. Check Cache
+        Object cachedData = cacheService.get(cacheKey);
         if (cachedData != null) {
-            log.info("Cache hit for language: {}. Skipping LLM call.", request.getLanguage());
+            log.info("🎯 Cache hit for {}", request.getLanguage());
             return objectMapper.convertValue(cachedData, ReviewResponse.class);
         }
 
+        // 2. Cache Miss: Get IMMEDIATE fast response
+        String prompt = promptBuilder.buildPrompt(request.getCode(), request.getLanguage());
+        ReviewResponse fastResponse = aiOrchestrator.getFastGroqReview(prompt);
 
+        // 3. Trigger ASYNC refinement (Passed 'request' object for syncing)
+        refinementService.refineAndCache(request, fastResponse, cacheKey);
 
-        log.debug("Cache miss. Proceeding with LLM generation.");
-
-
-        String prompt = promptBuilder.buildPrompt(
-                request.getCode(),
-                request.getLanguage()
-        );
-
-
-        String rawResponse = geminiClient.generateReview(prompt);
-
-
-        ReviewResponse response = responseParser.parseLLMResponse(rawResponse);
-
-
-        if (isResponseCacheable(response)) {
-            cacheService.put(cacheKey, response);
-            log.debug("Response saved to cache.");
-        }
-
-        log.info("Review processing completed successfully");
-        return response;
-    }
-
-
-    private boolean isResponseCacheable(ReviewResponse response) {
-        return response != null &&
-                (response.getIssues() != null && !response.getIssues().isEmpty());
+        // 4. Return fast response immediately
+        return fastResponse;
     }
 
     private void validateRequest(ReviewRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("Review request cannot be null");
-        }
-        if (request.getCode() == null || request.getCode().isBlank()) {
-            throw new IllegalArgumentException("Code cannot be empty");
-        }
-        if (request.getLanguage() == null || request.getLanguage().isBlank()) {
-            throw new IllegalArgumentException("Language must be specified");
+        if (request == null || request.getCode() == null || request.getLanguage() == null) {
+            throw new IllegalArgumentException("Invalid Review Request: Code and Language required");
         }
     }
 }

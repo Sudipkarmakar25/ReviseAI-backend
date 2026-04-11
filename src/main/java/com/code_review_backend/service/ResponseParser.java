@@ -46,18 +46,29 @@ public class ResponseParser {
     // ----------------------------------------
 
     private String extractLLMContent(String rawResponse) {
+        if (rawResponse == null || rawResponse.isBlank()) return "";
+
+        // If the response starts with '{' but DOES NOT have "choices",
+        // it's likely already the clean JSON content from Gemini SDK.
+        if (rawResponse.trim().startsWith("{") && !rawResponse.contains("\"choices\"")) {
+            return rawResponse;
+        }
 
         try {
             JSONObject root = new JSONObject(rawResponse);
 
-            return root
-                    .optJSONArray("choices")
-                    .optJSONObject(0)
-                    .optJSONObject("message")
-                    .optString("content", "");
+            // Handle Groq/OpenAI wrapped format
+            if (root.has("choices")) {
+                return root.getJSONArray("choices")
+                        .getJSONObject(0)
+                        .getJSONObject("message")
+                        .getString("content");
+            }
 
+            return rawResponse;
         } catch (Exception e) {
-            throw new RuntimeException("Invalid LLM structure.");
+            // If it's not valid JSON at all, return it as is (it might be plain text)
+            return rawResponse;
         }
     }
 
