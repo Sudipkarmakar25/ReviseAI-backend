@@ -3,6 +3,7 @@ package com.code_review_backend.service;
 import com.code_review_backend.client.GeminiClient;
 import com.code_review_backend.dto.ReviewRequest;
 import com.code_review_backend.dto.ReviewResponse;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -15,15 +16,21 @@ public class ReviewService {
     private final PromptBuilder promptBuilder;
     private final GeminiClient geminiClient;
     private final ResponseParser responseParser;
+    private final CacheService cacheService;
+    private final ObjectMapper objectMapper;
 
     public ReviewService(
             PromptBuilder promptBuilder,
             GeminiClient geminiClient,
-            ResponseParser responseParser
+            ResponseParser responseParser,
+            CacheService cacheService,
+            ObjectMapper objectMapper
     ) {
         this.promptBuilder = promptBuilder;
         this.geminiClient = geminiClient;
         this.responseParser = responseParser;
+        this.cacheService = cacheService;
+        this.objectMapper = objectMapper;
     }
 
     public ReviewResponse processReview(ReviewRequest request) {
@@ -32,37 +39,54 @@ public class ReviewService {
 
         log.info("Processing review for language: {}", request.getLanguage());
 
-        // Step 1: Build Prompt
+
+        String cacheKey = cacheService.generateKey(request.getLanguage(), request.getCode());
+        Object cachedData = cacheService.get(cacheKey);
+
+        if (cachedData != null) {
+            log.info("Cache hit for language: {}. Skipping LLM call.", request.getLanguage());
+            return objectMapper.convertValue(cachedData, ReviewResponse.class);
+        }
+
+
+
+        log.debug("Cache miss. Proceeding with LLM generation.");
+
+
         String prompt = promptBuilder.buildPrompt(
                 request.getCode(),
                 request.getLanguage()
         );
 
-        log.debug("Prompt generated successfully");
 
-        // Step 2: Call LLM API
         String rawResponse = geminiClient.generateReview(prompt);
 
-        log.debug("Raw response received from LLM");
 
-        // Step 3: Parse LLM JSON → DTO
         ReviewResponse response = responseParser.parseLLMResponse(rawResponse);
 
-        log.info("Review processing completed successfully");
 
+        if (isResponseCacheable(response)) {
+            cacheService.put(cacheKey, response);
+            log.debug("Response saved to cache.");
+        }
+
+        log.info("Review processing completed successfully");
         return response;
     }
 
-    private void validateRequest(ReviewRequest request) {
 
+    private boolean isResponseCacheable(ReviewResponse response) {
+        return response != null &&
+                (response.getIssues() != null && !response.getIssues().isEmpty());
+    }
+
+    private void validateRequest(ReviewRequest request) {
         if (request == null) {
             throw new IllegalArgumentException("Review request cannot be null");
         }
-
         if (request.getCode() == null || request.getCode().isBlank()) {
             throw new IllegalArgumentException("Code cannot be empty");
         }
-
         if (request.getLanguage() == null || request.getLanguage().isBlank()) {
             throw new IllegalArgumentException("Language must be specified");
         }
