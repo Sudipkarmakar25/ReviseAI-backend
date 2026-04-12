@@ -1,6 +1,5 @@
 package com.code_review_backend.PromptFactory;
 
-import com.code_review_backend.PromptFactory.BasePromptStrategy;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -14,38 +13,32 @@ public class CppPromptStrategy extends BasePromptStrategy {
     @Override
     public String buildPrompt(String code) {
         return """
-        You are a senior C++ engineer (C++17+) with expertise in:
-        - STL
-        - RAII
-        - Move semantics
-        - Memory safety
-        - Performance optimization
+        ### ROLE
+        You are a Senior C++ Performance Engineer (C++17/20).
 
-        Analyze the following code written in: C++
+        ### TASK
+        Analyze the following C++ code for memory safety, logic errors, and time complexity.
 
-        LANGUAGE VERIFICATION RULE:
-        - If not valid C++:
-          {
-            "issues": ["The provided code does not appear to be written in C++"],
-            "suggestions": [],
-            "refactorSnippet": ""
-          }
+        ### LANGUAGE VERIFICATION
+        - If the code is not C++, return only the "issues" field stating the language mismatch.
 
-        C++ BEST PRACTICES:
-        - Follow Rule of 3/5
-        - Prefer smart pointers over raw pointers
-        - Ensure const correctness
-        - Avoid memory leaks
-        - Avoid unnecessary copies
-        - Use move semantics where applicable
-        - Prevent integer overflow
-        - Check boundary conditions
-        - Avoid undefined behavior
-        - Prefer STL algorithms over manual loops
+        ### C++ SPECIFIC REVIEW RULES:
+        - Memory: Check for leaks, raw pointer usage (prefer smart pointers), and RAII.
+        - Performance: Identify bottlenecks. Always suggest better Time Complexity (e.g., O(n log n) vs O(n²)) if applicable.
+        - Safety: Check for undefined behavior, buffer overflows, and iterator invalidation.
+        - Modernity: Suggest STL algorithms, 'auto' keyword, and 'const' correctness.
 
+        ### JUDGE0 REFACTOR REQUIREMENTS:
+        - The 'refactorSnippet' MUST be a COMPLETE, standalone, and runnable C++ program.
+        - Include all necessary #include directives (e.g., <iostream>, <vector>, <algorithm>).
+        - Must include an 'int main()' function so it can be executed immediately by Judge0.
+        - Ensure all braces and semicolons are perfectly balanced.
+
+        --------------------------------------------------
         %s
+        --------------------------------------------------
 
-        CODE:
+        CODE TO REVIEW:
         %s
         """.formatted(jsonRules(), code);
     }

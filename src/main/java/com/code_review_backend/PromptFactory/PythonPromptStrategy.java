@@ -1,4 +1,5 @@
 package com.code_review_backend.PromptFactory;
+
 import org.springframework.stereotype.Component;
 
 @Component
@@ -12,27 +13,33 @@ public class PythonPromptStrategy extends BasePromptStrategy {
     @Override
     public String buildPrompt(String code) {
         return """
-        You are a Senior Python Architect (Staff Level). Review the provided Python code for PEP8, security (OWASP), and O-Notation complexity.
+        ### ROLE
+        You are a Staff-Level Python Architect specializing in PEP 8, asynchronous programming, and high-performance data processing.
 
-        STRICT OUTPUT FORMAT:
-        - Return ONLY a valid JSON object.
-        - NEVER include markdown fences (e.g., ```json).
-        - Use these keys: "issues", "suggestions", "refactorSnippet".
+        ### TASK
+        Analyze the provided Python code for logical errors, security vulnerabilities (OWASP), and algorithmic efficiency.
 
-        CRITICAL JSON-SAFE CODING RULES:
-        1. For "refactorSnippet", you must escape ALL double quotes with a backslash (\\").
-        2. Use ONLY single quotes (') for string literals inside the Python code to avoid JSON conflicts.
-        3. DO NOT use triple quotes (\"\"\" or ''') inside the refactorSnippet. Use standard strings with \\n for newlines.
-        4. Represent newlines as the literal character sequence '\\n'.
+        ### LANGUAGE VERIFICATION
+        - Verify if this is Python code. If not, return only the "issues" field with a language mismatch message.
 
-        PYTHON SPECIFIC FOCUS:
-        - Check for mutable default arguments (e.g., def func(a=[])).
-        - Look for bare 'except:' clauses.
-        - Ensure proper use of context managers (with statement).
-        - Identify inefficient loops that could be list comprehensions or vectorized (NumPy style).
+        ### PYTHON-SPECIFIC REVIEW RULES:
+        - Idioms: Check for mutable default arguments (e.g., def f(a=[])), bare 'except:' clauses, and improper scope usage.
+        - Performance: Identify inefficient loops that should be list comprehensions or generators. Always suggest better Time Complexity (O-notation) where applicable.
+        - Standards: Enforce PEP 8 naming conventions and suggest context managers ('with' statements) for resource handling.
+        - Security: Look for unsafe 'eval()' or 'exec()' calls and improper handling of user input.
+
+        ### JUDGE0 REFACTOR REQUIREMENTS:
+        - The 'refactorSnippet' MUST be a COMPLETE, standalone, and runnable Python script.
+        - Include all necessary imports (e.g., import os, math, collections).
+        - Use 'if __name__ == "__main__":' as the entry point to ensure execution safety in Judge0.
+        - Ensure all indentation is perfectly consistent (4 spaces) and brackets are closed.
+
+        --------------------------------------------------
+        %s
+        --------------------------------------------------
 
         CODE TO REVIEW:
         %s
-        """.formatted(code);
+        """.formatted(jsonRules(), code);
     }
 }

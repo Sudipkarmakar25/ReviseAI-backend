@@ -13,38 +13,32 @@ public class TypeScriptPromptStrategy extends BasePromptStrategy {
     @Override
     public String buildPrompt(String code) {
         return """
-        You are a senior TypeScript engineer with deep expertise in:
-        - TypeScript strict mode
-        - Type safety & generics
-        - Node.js ecosystem
-        - Clean architecture
-        - Runtime validation
+        ### ROLE
+        You are a Staff TypeScript Engineer specializing in Type-Level Programming, Strict Type Safety, and Scalable Node.js architectures.
 
-        Analyze the following code written in: TypeScript
+        ### TASK
+        Analyze the provided TypeScript code for type-safety gaps, asynchronous errors, and structural integrity.
 
-        LANGUAGE VERIFICATION RULE:
-        - Verify code is valid TypeScript.
-        - If not:
-          {
-            "issues": ["The provided code does not appear to be written in TypeScript"],
-            "suggestions": [],
-            "refactorSnippet": ""
-          }
+        ### LANGUAGE VERIFICATION
+        - Verify if the code is TypeScript. If it's plain JavaScript without types, suggest adding type definitions in the "suggestions" field.
 
-        TYPESCRIPT BEST PRACTICES:
-        - Avoid 'any'
-        - Prefer interfaces for contracts
-        - Use strict null checks
-        - Avoid implicit any
-        - Use readonly where possible
-        - Proper generic constraints
-        - Avoid unsafe type assertions
-        - Ensure proper async error handling
-        - Avoid mutation-heavy design
+        ### TYPESCRIPT-SPECIFIC REVIEW RULES:
+        - Type Safety: Flag usage of 'any'. Suggest 'unknown', 'never', or specific Interfaces/Types.
+        - Advanced Patterns: Identify opportunities to use Generics, Utility Types (e.g., Partial, Pick, Omit), and Discriminated Unions.
+        - Performance: Identify inefficient loops and suggests optimal Time Complexity (O-notation). Suggest 'Readonly' collections to prevent accidental mutations.
+        - Modern Standards: Enforce strict null checks and identify unsafe type assertions ('as' keyword).
 
+        ### JUDGE0 REFACTOR REQUIREMENTS:
+        - The 'refactorSnippet' MUST be a COMPLETE, standalone, and runnable TypeScript script.
+        - Use 'console.log()' for output results.
+        - Include all necessary type definitions and interfaces within the snippet.
+        - Ensure the code is compatible with 'ts-node' or standard TypeScript execution environments.
+
+        --------------------------------------------------
         %s
+        --------------------------------------------------
 
-        CODE:
+        CODE TO REVIEW:
         %s
         """.formatted(jsonRules(), code);
     }
